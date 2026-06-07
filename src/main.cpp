@@ -1,125 +1,237 @@
-#include <Arduino.h>
-#include <NimBLEDevice.h>
-#include <DHT.h>
+/*
+██╗███╗   ███╗██████╗  ██████╗ ██████╗ ████████╗███████╗
+██║████╗ ████║██╔══██╗██╔═══██╗██╔══██╗╚══██╔══╝██╔════╝
+██║██╔████╔██║██████╔╝██║   ██║██████╔╝   ██║   ███████╗
+██║██║╚██╔╝██║██╔═══╝ ██║   ██║██╔══██╗   ██║   ╚════██║
+██║██║ ╚═╝ ██║██║     ╚██████╔╝██║  ██║   ██║   ███████║
+╚═╝╚═╝     ╚═╝╚═╝      ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝
 
-NimBLEServer* pServer;
-NimBLECharacteristic* pCharacteristic1;
-NimBLECharacteristic* sensorChar;
-DHT dht(4, DHT11); // DHT sensor on GPIO 4 - Temperature and Humidity
+*/
+#include <Wire.h>
+#include <WiFi.h>
 
-#define SERVICE_UUID          "223862d6-64a5-40c0-ba56-b32451c2aa27"
-#define CHARACTERISTIC_UUID_1 "b3898a5a-5d50-4636-a814-d804afb43274"
-#define CHARACTERISTIC_UUID_2 "85c62e72-7735-463c-a5ce-5c5f7a703acc"
-#define LED_PIN          2
-#define R_LED           19
-#define G_LED           18
-#define B_LED           5
-#define LIGHT_SENSOR    15
+#include <BME280_t.h> 
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h> 
 
-void LED_Blink( void ) {
-  digitalWrite(LED_PIN, HIGH), ledcWrite(2, 255), delay(100); 
-  digitalWrite(LED_PIN, LOW), ledcWrite(2, 0), delay(100);
-}
+/*
+ ██████╗ ██████╗ ███╗   ██╗███████╗██╗ ██████╗ ██╗   ██╗██████╗  █████╗ ████████╗██╗ ██████╗ ███╗   ██╗
+██╔════╝██╔═══██╗████╗  ██║██╔════╝██║██╔════╝ ██║   ██║██╔══██╗██╔══██╗╚══██╔══╝██║██╔═══██╗████╗  ██║
+██║     ██║   ██║██╔██╗ ██║█████╗  ██║██║  ███╗██║   ██║██████╔╝███████║   ██║   ██║██║   ██║██╔██╗ ██║
+██║     ██║   ██║██║╚██╗██║██╔══╝  ██║██║   ██║██║   ██║██╔══██╗██╔══██║   ██║   ██║██║   ██║██║╚██╗██║
+╚██████╗╚██████╔╝██║ ╚████║██║     ██║╚██████╔╝╚██████╔╝██║  ██║██║  ██║   ██║   ██║╚██████╔╝██║ ╚████║
+ ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝╚═╝     ╚═╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   ╚═╝ ╚═════╝ ╚═╝  ╚═══╝
 
-int RGB_val[3] = {0, 0, 0};
+*/
+const char* ssid       = "SpectrumSetup-39";       // WiFi SSID of your network
+const char* password   = "quietengine538";         // WiFi password of your network
+String localIP;                                    // Buffer to hold the local IP address as a string
+String MacAddress;                                 // Buffer to hold the MAC address as a string
 
-// Read From DHT Sensor
-struct DHT_values {
-    float t; // Read temperature as Celsius
-    float h; // Read humidity
-};
-DHT_values dht_values = {0.0f, 0.0f}; // Read temperature and humidity  
+const char* device_id   = "garden_sensor";
+const char* device_name = "Garden Sensor Node";
 
-void sensorUpdate(void) {
-    dht_values = {dht.readTemperature(), dht.readHumidity()}; // Read temperature and humidity
-    if (isnan(dht_values.t) || isnan(dht_values.h)) {
-        Serial.println("Failed to read from DHT sensor!");
-        return;
-    }
+/*
+██████╗ ██╗███╗   ██╗ ██████╗ ██╗   ██╗████████╗███████╗
+██╔══██╗██║████╗  ██║██╔═══██╗██║   ██║╚══██╔══╝██╔════╝
+██████╔╝██║██╔██╗ ██║██║   ██║██║   ██║   ██║   ███████╗
+██╔═══╝ ██║██║╚██╗██║██║   ██║██║   ██║   ██║   ╚════██║
+██║     ██║██║ ╚████║╚██████╔╝╚██████╔╝   ██║   ███████║
+╚═╝     ╚═╝╚═╝  ╚═══╝ ╚═════╝  ╚═════╝    ╚═╝   ╚══════╝
 
+*/
+#define LED_PIN 2
+#define SOLENOID_PIN 4
+#define BUTTON_PIN 0
+
+#define SCREEN_ADDRESS 0x3C
+
+/*
+ ██████╗ ██╗      ██████╗ ██████╗  █████╗ ██╗         ██╗   ██╗ █████╗ ██████╗ ██╗ █████╗ ██████╗ ██╗     ███████╗███████╗
+██╔════╝ ██║     ██╔═══██╗██╔══██╗██╔══██╗██║         ██║   ██║██╔══██╗██╔══██╗██║██╔══██╗██╔══██╗██║     ██╔════╝██╔════╝
+██║  ███╗██║     ██║   ██║██████╔╝███████║██║         ██║   ██║███████║██████╔╝██║███████║██████╔╝██║     █████╗  ███████╗
+██║   ██║██║     ██║   ██║██╔══██╗██╔══██║██║         ╚██╗ ██╔╝██╔══██║██╔══██╗██║██╔══██║██╔══██╗██║     ██╔══╝  ╚════██║
+╚██████╔╝███████╗╚██████╔╝██████╔╝██║  ██║███████╗     ╚████╔╝ ██║  ██║██║  ██║██║██║  ██║██████╔╝███████╗███████╗███████║
+ ╚═════╝ ╚══════╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝      ╚═══╝  ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚═╝  ╚═╝╚═════╝ ╚══════╝╚══════╝╚══════╝
+
+*/
+bool LEDState = LOW; // Internal LED State
+bool solenoidState = LOW; // Solenoid state variable 
+bool buttonState = LOW; // Global variable to track the state of manual button
+bool manualMode = false; // Set to true to enable manual control of the solenoid
+int status = WL_IDLE_STATUS; // WiFi status variable
+float temperature = 0, humidity = 0, pressure = 0, altitude = 0; // Global variables
+
+const int SCREEN_WIDTH = 128; // OLED display width, in pixels
+const int SCREEN_HEIGHT = 64; // OLED display height, in pixels
+const int OLED_RESET =  -1; // Reset pin # (or -1 if sharing Arduino reset pin)
+const float SEA_LEVEL_PRESSURE_HPA = 1013.25F; // Standard sea level pressure in hPa
     
-}
+const int initrelayPeriod = 1000 * 30 * 1; //(1000 ms * X s * X min) - solenoid refresh timer
+const int initdataPeriod = 1000 * 1 * 1; // (1000 ms * X s * X min) - data refresh rate
+const float tempLimit = 90.0; // Temperature threshold in Fahrenheit
 
-void setup() {
-  Serial.begin(115200); // initiallize serial communication
-  while (!Serial) { delay(100); }  // wait for serial port to connect
+WiFiClient espClient;
+BME280<> BMESensor;
+TimerHandle_t relayTimer_solenoid, dataTimer; // Software timers for solenoid control and data logging
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-  pinMode(LED_PIN, OUTPUT); // Set LED pin as output
-  pinMode(LIGHT_SENSOR, INPUT); // Set Light Sensor pin as Input
-  ledcAttachPin(R_LED, 0);
-  ledcSetup(0, 5000, 8);
-  ledcWrite(0, 0);
-  ledcAttachPin(G_LED, 1);
-  ledcSetup(1, 5000, 8);
-  ledcWrite(1, 0);
-  ledcAttachPin(B_LED, 2);
-  ledcSetup(2, 5000, 8);
-  ledcWrite(2, 0);
+/*
+ ██████╗ █████╗ ██╗     ██╗     ██████╗  █████╗  ██████╗██╗  ██╗███████╗
+██╔════╝██╔══██╗██║     ██║     ██╔══██╗██╔══██╗██╔════╝██║ ██╔╝██╔════╝
+██║     ███████║██║     ██║     ██████╔╝███████║██║     █████╔╝ ███████╗
+██║     ██╔══██║██║     ██║     ██╔══██╗██╔══██║██║     ██╔═██╗ ╚════██║
+╚██████╗██║  ██║███████╗███████╗██████╔╝██║  ██║╚██████╗██║  ██╗███████║
+ ╚═════╝╚═╝  ╚═╝╚══════╝╚══════╝╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚══════╝
 
-  
-  dht.begin(); // Initialize DHT sensor
-  dht_values = {dht.readTemperature(), dht.readHumidity()}; // Read temperature and humidity
-
-  // Initialize NimBLE
-  NimBLEDevice::init("Garden Monitor");
-  pServer = NimBLEDevice::createServer();
-
-  NimBLEService* pService = pServer->createService(SERVICE_UUID);
-  pCharacteristic1 = pService->createCharacteristic(
-                      CHARACTERISTIC_UUID_1,
-                      NIMBLE_PROPERTY::READ |
-                      NIMBLE_PROPERTY::WRITE
-                    );
-
-  sensorChar = pService->createCharacteristic(
-                      CHARACTERISTIC_UUID_1,
-                      NIMBLE_PROPERTY::READ 
-                    );
-
-  pService->start();
-
-  NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(SERVICE_UUID);
-  pAdvertising->start();
-
-  Serial.println("BLE Advertising Started");
-
-  // Flash LED twice to indicate startup is successful
-  for (int i = 0; i < 3; i++) {
-    LED_Blink();
-  }
-}
-
-void loop() {
-    sensorUpdate();
-    float lightValue = analogRead(LIGHT_SENSOR)/4095.0 * 3.3; // Read light sensor value in V [3.2 (Dark) - 0.15V (Light)] - 10K Voltage Divider for std daylight
-
-    if (pServer->getConnectedCount() > 0) {
-        Serial.println("Client connected"); 
-        NimBLEDevice::getAdvertising()->stop(); // Stop advertising if a client is connected
-        String value = pCharacteristic1->getValue(); // Take the string value from the pCharacteristic
-
-        if (value.isEmpty()){
-            // do nothing
-        } else {
-            RGB_val[0] = value.substring(0, value.length()).toInt();
-            RGB_val[1] = value.substring(3, value.length()).toInt();
-            RGB_val[2] = value.substring(7, value.length()).toInt();
-
-            ledcWrite(0, RGB_val[0]); // Set Red LED
-            ledcWrite(1, RGB_val[1]); // Set Green LED  
-            ledcWrite(2, RGB_val[2]); // Set Blue LED
-        } 
-        
-        Serial.print(">Light V: ");
-        Serial.println(lightValue, 2);
-
-    } else {
-        Serial.println("No clients connected");
-        Serial.print("print this: ");
-        Serial.println(dht.readTemperature(true));
-        NimBLEDevice::getAdvertising()->start(); // Start advertising if no client is connected
+ */
+void relayCallback(TimerHandle_t xTimer) {
+    // Skip automatic control if manual mode is enabled - Off by default, the system will automatically control the solenoid based on temperature readings.
+    if (manualMode) {
+        Serial.printf("Manual mode enabled. Skipping automatic solenoid control.");
+        return; 
     }
 
-    delay(100); // Delay or sleep for 2 seconds
+    // Temperature limit so you dont kill the plants
+    if (temperature <= tempLimit) {
+        solenoidState = HIGH; // toggle the solenoid state to on
+    }
+
+    Serial.printf("Solenoid state: %s\n", solenoidState ? "ON" : "OFF");
+}
+
+void dataCallback(TimerHandle_t xTimer) {
+    BMESensor.refresh();
+    temperature = BMESensor.temperature; // Update global temperature variable
+    humidity = BMESensor.humidity; // Update global humidity variable
+    pressure = BMESensor.pressure; // Update global pressure variable
+    altitude = BMESensor.pressureToAltitude(); // Update global altitude variable
+
+    Serial.printf("Temperature: %-.1f °F | Humidity: %-.1f% | Pressure: %-.2f atm | Altitude: %-.1f m \n", temperature * 1.8 + 32, humidity, pressure / 100.0F / SEA_LEVEL_PRESSURE_HPA, altitude);
+
+    LEDState = !LEDState; // toggle the LED state
+    digitalWrite(LED_PIN, LEDState); // turn on the LED
+}
+
+/*
+███████╗███████╗████████╗██╗   ██╗██████╗
+██╔════╝██╔════╝╚══██╔══╝██║   ██║██╔══██╗
+███████╗█████╗     ██║   ██║   ██║██████╔╝
+╚════██║██╔══╝     ██║   ██║   ██║██╔═══╝
+███████║███████╗   ██║   ╚██████╔╝██║
+╚══════╝╚══════╝   ╚═╝    ╚═════╝ ╚═╝
+
+*/
+void setup() {
+  // --- Begin Serial and I2C communication ---/
+  
+  Wire.begin();
+  Serial.begin(115200);
+  delay(1000); // let the serial connection initiate with some downtime 
+
+  if(!BMESensor.begin()) { // Initialize the BME280 sensor
+    Serial.printf("Could not find a valid BME280 sensor, check wiring! \n"); 
+  }
+
+  if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) { // Initialize the OLED display
+    Serial.printf("SSD1306 allocation failed \n");
+  }
+  
+  display.display();
+
+  // --- Initalize pins ---
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(SOLENOID_PIN, OUTPUT);
+  pinMode(BUTTON_PIN, INPUT_PULLDOWN); // Set button pin as input with pull-up resistor
+  
+  // --- Connect to WiFi ---
+  WiFi.mode(WIFI_STA);
+  
+  int n = WiFi.scanNetworks(); // Trigger a WiFi scan to update the list of available networks
+  Serial.printf("\n");
+  Serial.printf("Searching for Networks... \n");
+  if(n == 0) {
+    Serial.printf("No networks found. Retrying... \n");
+  }
+  else {
+    Serial.printf("%d network(s) found:\n", n);
+    Serial.printf("Nr | SSID                             | RSSI     | CH | Encryption\n");
+    Serial.printf("------------------------------------------------------------------\n");
+
+    for (int i = 0; i < n; ++i) {
+
+        Serial.printf("%2d | %-32.32s | %4d dBm | %2d | ", i + 1, WiFi.SSID(i).c_str(), WiFi.RSSI(i), WiFi.channel(i));
+        switch (WiFi.encryptionType(i)) {
+            case WIFI_AUTH_OPEN:
+                Serial.printf("OPEN");
+                break;
+            case WIFI_AUTH_WEP:
+                Serial.printf("WEP");
+                break;
+            case WIFI_AUTH_WPA_PSK:
+                Serial.printf("WPA_PSK");
+                break;
+            case WIFI_AUTH_WPA2_PSK:
+                Serial.printf("WPA2_PSK");
+                break;
+            case WIFI_AUTH_WPA_WPA2_PSK:
+                Serial.printf("WPA_WPA2_PSK");
+                break;
+            case WIFI_AUTH_WPA2_ENTERPRISE:
+                Serial.printf("WPA2_ENTERPRISE");
+                break;
+            default:
+                Serial.printf("UNKNOWN");
+        }
+        Serial.printf("\n");
+
+    }
+}
+  Serial.printf("\n");
+  Serial.printf("Attempting to connect to SSID: [%s]", ssid);
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    Serial.printf(".");
+    delay(500);
+  }
+
+  Serial.printf("\n");
+  Serial.printf("Wifi connection to [%-s] successful! \n", ssid);
+  localIP = WiFi.localIP().toString();
+  MacAddress = WiFi.macAddress();
+  Serial.printf("Local IP Address: [%s] \n", localIP);
+  Serial.printf("MAC Address: [%s] \n\n", MacAddress);
+
+  // --- Timers ---
+  relayTimer_solenoid = xTimerCreate("waterSolenoid", pdMS_TO_TICKS(initrelayPeriod), pdTRUE, (void*)0, relayCallback);
+  xTimerStart(relayTimer_solenoid, 0);
+  dataTimer = xTimerCreate("dataLogger", pdMS_TO_TICKS(initdataPeriod), pdTRUE, (void*)0, dataCallback);
+  xTimerStart(dataTimer, 0);
+}
+
+/*
+███╗   ███╗ █████╗ ██╗███╗   ██╗    ██╗      ██████╗  ██████╗ ██████╗
+████╗ ████║██╔══██╗██║████╗  ██║    ██║     ██╔═══██╗██╔═══██╗██╔══██╗
+██╔████╔██║███████║██║██╔██╗ ██║    ██║     ██║   ██║██║   ██║██████╔╝
+██║╚██╔╝██║██╔══██║██║██║╚██╗██║    ██║     ██║   ██║██║   ██║██╔═══╝
+██║ ╚═╝ ██║██║  ██║██║██║ ╚████║    ███████╗╚██████╔╝╚██████╔╝██║
+╚═╝     ╚═╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝    ╚══════╝ ╚═════╝  ╚═════╝ ╚═╝
+
+*/
+void loop() {\
+    buttonState = digitalRead(0); // Read the state of the button connected to GPIO 0
+
+    if(solenoidState) {
+        digitalWrite(SOLENOID_PIN, solenoidState); // turn on the solenoid
+        delay(1000 * 10 * 1); // keep the solenoid on for 20 seconds
+        solenoidState = LOW; // turn off the solenoid
+    }
+    else {
+        digitalWrite(SOLENOID_PIN, solenoidState); // turn off the solenoid
+    }
+
+    //xTimerChangePeriod(relayTimer_solenoid, pdMS_TO_TICKS(1000 * 60 * 1), 0); // change the period of the solenoid timer to 1 minute
+    //xTimerChangePeriod(dataTimer, pdMS_TO_TICKS(1000), 0
 }
